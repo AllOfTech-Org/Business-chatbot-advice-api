@@ -16,8 +16,7 @@ from dotenv import load_dotenv
 # ------------------------------
 load_dotenv()
 API_KEY = os.getenv("OPENROUTER_API_KEY")
-# NOTE: We intentionally do NOT crash the server on missing keys.
-# Endpoints that require the key will return a clear error (or a fallback response).
+# NOTE: API key is required for LLM endpoints. Missing key will return a clear error.
 
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
@@ -77,33 +76,18 @@ Rules:
 """
 
 # ------------------------------
-# Business Analyzer prompt (one-problem policy)
+# Business Analyzer prompt
 # ------------------------------
-BUSINESS_ANALYZER_SYSTEM_PROMPT = """
-You are ALLOFTECH AI — the official intelligent assistant of AllOfTech.
+BUSINESS_ANALYZER_SYSTEM_PROMPT = """You are ALLOFTECH AI, the intelligent assistant of AllOfTech technology solutions agency.
 
-You will receive:
-- Website analysis JSON (content summary, SEO fields, detected tech stack) — may be empty.
-- An optional business owner problem statement.
+Analyze the provided information and give practical, actionable business advice. Be direct, specific, and helpful. Focus on the most critical issue and provide clear solutions.
 
-Your job:
-- Identify exactly ONE main problem (never multiple).
-- Give ONE clear, specific, high-impact advice tied directly to that one problem.
-- If the owner provided a problem, treat it as the main problem (even if website data is thin).
-- If no owner problem is provided, infer ONE main problem from the website analysis.
-- Do NOT echo raw website JSON in the answer; just use it to reason.
+Always end your response with:
+- How AllOfTech can help solve this
+- Contact: contact.alloftech@gmail.com | www.alloftech.site | facebook.com/AllOfTech.official
+- Schedule a meeting: https://calendar.app.google/39A1uSVFK96rUrUg9
 
-Output rules (must follow exactly):
-- No hidden reasoning, no <think>.
-- Be concise, specific, and actionable for a business owner (not generic).
-- End with how AllOfTech can help + contact + meeting link (no placeholders).
-
-Required output format (use these headings exactly):
-Main problem:
-Advice:
-How AllOfTech can help:
-Contact:
-"""
+Respond naturally and professionally. Do not include raw JSON or technical details in your response."""
 
 # ------------------------------
 # Request schema
@@ -154,10 +138,10 @@ def _analyze_website(url: str) -> Dict[str, Any]:
 
 def _fallback_one_problem_advice(*, website_analysis: Dict[str, Any], owner_problem: Optional[str]) -> str:
     """
-    Deterministic fallback (no LLM) that still follows the "one problem + one advice" rule.
+    Natural fallback response when LLM is unavailable.
     """
     meeting_link = "https://calendar.app.google/39A1uSVFK96rUrUg9"
-    contact = "Email: contact.alloftech@gmail.com | Website: www.alloftech.site | Facebook: facebook.com/AllOfTech.official"
+    contact = "contact.alloftech@gmail.com | www.alloftech.site | facebook.com/AllOfTech.official"
 
     owner_problem_text = (owner_problem or "").strip()
     if owner_problem_text:
@@ -186,16 +170,53 @@ def _fallback_one_problem_advice(*, website_analysis: Dict[str, Any], owner_prob
                 "and create one dedicated landing page per core service with a simple lead form."
             )
 
-    return (
-        "Main problem:\n"
-        f"{main_problem}\n\n"
-        "Advice:\n"
-        f"{advice}\n\n"
-        "How AllOfTech can help:\n"
-        "AllOfTech can audit your website (SEO + UX + conversion), rewrite/optimize the content structure, implement tracking, and build high-converting landing pages to increase qualified leads.\n\n"
-        "Contact:\n"
-        f"{contact}\nMeeting: {meeting_link}"
-    )
+    if owner_problem_text:
+        response = (
+            f"Based on your concern about '{owner_problem_text}', here's what I recommend:\n\n"
+            "Consider implementing an AI-powered chatbot solution that can handle customer inquiries 24/7, "
+            "capture lead information automatically, and integrate with your existing systems. This will help "
+            "you respond faster to potential customers and never miss a lead opportunity.\n\n"
+            "AllOfTech can help you build and deploy a custom chatbot tailored to your business needs, "
+            "integrate it with your website and CRM, and ensure it captures all the information you need "
+            "to convert visitors into customers.\n\n"
+            f"Contact: {contact}\n"
+            f"Schedule a meeting: {meeting_link}"
+        )
+    else:
+        seo = website_analysis.get("seo") or {}
+        title = seo.get("title")
+        meta_desc = seo.get("meta_description")
+        headers = seo.get("headers") or {}
+        h1s = headers.get("h1") or []
+
+        if not title or not meta_desc or not h1s:
+            response = (
+                "I noticed your website is missing some key SEO elements like a clear title tag, meta description, or H1 headings. "
+                "These are fundamental for search engines to understand and rank your content. Without them, you're likely missing "
+                "out on organic traffic and potential customers.\n\n"
+                "I recommend starting with a complete SEO audit and optimization. Focus on creating keyword-rich titles and descriptions "
+                "for each page, ensuring proper heading structure, and aligning your content with what your target customers are searching for. "
+                "This foundation will make all your other marketing efforts more effective.\n\n"
+                "AllOfTech can perform a comprehensive SEO audit, optimize your existing pages, and create a content strategy that "
+                "drives organic traffic and leads.\n\n"
+                f"Contact: {contact}\n"
+                f"Schedule a meeting: {meeting_link}"
+            )
+        else:
+            response = (
+                "Your website has the basic SEO elements in place, but there's likely room to improve how effectively it converts "
+                "visitors into leads. Many businesses struggle with making their value proposition clear and guiding visitors toward "
+                "taking action.\n\n"
+                "I suggest focusing on conversion optimization: make your main value proposition immediately clear on the homepage, "
+                "add social proof like testimonials or case studies, create clear calls-to-action, and consider dedicated landing pages "
+                "for your key services with simple lead capture forms.\n\n"
+                "AllOfTech can help you redesign key pages for better conversion, implement tracking to understand visitor behavior, "
+                "and create high-converting landing pages that turn visitors into customers.\n\n"
+                f"Contact: {contact}\n"
+                f"Schedule a meeting: {meeting_link}"
+            )
+
+    return response
 
 # ------------------------------
 # Async OpenRouter request
@@ -235,28 +256,75 @@ async def ask_business_advisor(*, website_analysis: Dict[str, Any], owner_proble
 
     def sync_request():
         if not _has_api_key():
-            raise RuntimeError("OPENROUTER_API_KEY is not set on the server.")
+            raise RuntimeError("OPENROUTER_API_KEY is not configured on the server. Please contact the administrator.")
         headers = {
             "Authorization": f"Bearer {API_KEY}",
             "Content-Type": "application/json",
         }
 
         owner_problem_text = (owner_problem or "").strip()
-        owner_problem_block = owner_problem_text if owner_problem_text else "(not provided)"
-
-        user_payload = (
-            "Context for analysis (use this to reason; do NOT echo raw JSON back):\n"
-            f"- Website analysis JSON: {json.dumps(website_analysis, ensure_ascii=False)}\n"
-            f"- Owner problem (if any, prioritize if present): {owner_problem_block}\n\n"
-            "Requirements:\n"
-            "- Identify exactly ONE main problem.\n"
-            "- Give ONE specific, high-impact advice tied to that problem.\n"
-            "- If owner problem is provided, treat it as the main problem.\n"
-            "- If no owner problem, infer the main problem from the website analysis.\n"
-            "- Do NOT include raw website JSON in the answer.\n"
-            "- End with how AllOfTech can help + contact + meeting link (no placeholders).\n"
-            "- Use the required headings exactly.\n"
-        )
+        
+        # Build comprehensive user message with ALL scraped website data
+        user_payload_parts = []
+        
+        # Add problem if provided
+        if owner_problem_text:
+            user_payload_parts.append(f"Business Problem:\n{owner_problem_text}")
+        
+        # Add comprehensive website analysis data
+        if website_analysis:
+            website_data = []
+            
+            # SEO Data
+            seo = website_analysis.get("seo", {})
+            if seo:
+                if seo.get("title"):
+                    website_data.append(f"Page Title: {seo.get('title')}")
+                if seo.get("meta_description"):
+                    website_data.append(f"Meta Description: {seo.get('meta_description')}")
+                if seo.get("og_title"):
+                    website_data.append(f"OG Title: {seo.get('og_title')}")
+                if seo.get("og_description"):
+                    website_data.append(f"OG Description: {seo.get('og_description')}")
+                
+                # Headers
+                headers = seo.get("headers", {})
+                if headers.get("h1"):
+                    website_data.append(f"H1 Headings: {', '.join(headers.get('h1', []))}")
+                if headers.get("h2"):
+                    website_data.append(f"H2 Headings: {', '.join(headers.get('h2', [])[:5])}")
+                if headers.get("h3"):
+                    website_data.append(f"H3 Headings: {', '.join(headers.get('h3', [])[:5])}")
+                
+                # Keywords
+                if seo.get("top_keywords"):
+                    keywords = [kw[0] for kw in seo.get("top_keywords", [])[:10]]
+                    website_data.append(f"Top Keywords: {', '.join(keywords)}")
+            
+            # Tech Stack
+            tech_stack = website_analysis.get("tech_stack", [])
+            if tech_stack:
+                website_data.append(f"Technology Stack: {', '.join(tech_stack)}")
+            
+            # Content Summary (use more content, up to 2000 chars)
+            content_summary = website_analysis.get("content_summary", "")
+            if content_summary:
+                content_clean = content_summary[:2000].replace('\n', ' ').strip()
+                if content_clean:
+                    website_data.append(f"Website Content:\n{content_clean}")
+            
+            # Domain/URL
+            if website_analysis.get("domain"):
+                website_data.append(f"Domain: {website_analysis.get('domain')}")
+            
+            if website_data:
+                user_payload_parts.append("Website Analysis Data:\n" + "\n".join(website_data))
+        
+        # Build final prompt
+        if not user_payload_parts:
+            raise RuntimeError("No data provided. Please provide either website_url or owner_problem.")
+        
+        user_payload = "\n\n".join(user_payload_parts) + "\n\nAnalyze this information and provide specific, actionable business advice based on the actual data provided above."
 
         payload = {
             "model": "mistralai/devstral-2512:free",
@@ -264,13 +332,16 @@ async def ask_business_advisor(*, website_analysis: Dict[str, Any], owner_proble
                 {"role": "system", "content": BUSINESS_ANALYZER_SYSTEM_PROMPT},
                 {"role": "user", "content": user_payload},
             ],
-            "max_tokens": 700,
+            "max_tokens": 1000,
         }
 
         response = requests.post(API_URL, headers=headers, data=json.dumps(payload))
         if response.status_code != 200:
-            raise RuntimeError(f"OpenRouter error {response.status_code}: {response.text}")
+            error_text = response.text
+            raise RuntimeError(f"LLM API error {response.status_code}: {error_text}")
         data = response.json()
+        if "choices" not in data or not data["choices"]:
+            raise RuntimeError("Invalid response from LLM API: no choices in response")
         return data["choices"][0]["message"]["content"]
 
     return await loop.run_in_executor(None, sync_request)
@@ -288,43 +359,42 @@ async def chat(request: ChatRequest):
 @app.post("/business-advice")
 async def business_advice(request: BusinessAnalysisRequest):
     """
-    Inputs:
-    - website_url: optional website link
-    - owner_problem: optional business owner problem
-
-    Behavior:
-    - If website_url is provided, scrapes/analyzes the website using Website-Analyzer.py
-    - If owner_problem is provided, it is prioritized as the main problem
-    - If only owner_problem is provided (no website_url), advice is based on the problem alone
-    - If only website_url is provided (no owner_problem), advice is inferred from the website analysis
-    - Always: exactly one main problem + one advice + AllOfTech CTA + contact/meeting link
+    Business advice endpoint.
+    
+    Requires at least one of:
+    - website_url: Website to analyze
+    - owner_problem: Business problem description
+    
+    If both are provided, combines website insights with the problem for better advice.
     """
-    if not (request.website_url or request.owner_problem):
+    # Validate: at least one input required
+    if not request.website_url and not request.owner_problem:
         raise HTTPException(
             status_code=400,
-            detail="You must provide at least website_url or owner_problem.",
+            detail="You must provide at least one: website_url or owner_problem",
         )
 
-    # Optional website analysis
+    # Scrape and analyze website if URL provided
     website_analysis: Dict[str, Any] = {}
     if request.website_url:
         try:
             website_analysis = _analyze_website(request.website_url)
-        except Exception:
-            # If scraping fails, still continue with empty analysis and owner_problem if present
+        except Exception as e:
+            # Log error but continue - we can still provide advice based on owner_problem
             website_analysis = {}
 
+    # Get advice from LLM - always use actual data, no fallbacks
     try:
         reply = await ask_business_advisor(
             website_analysis=website_analysis,
             owner_problem=request.owner_problem,
         )
-    except Exception:
-        # If OpenRouter fails (missing/invalid key, etc.), return a solid deterministic fallback.
-        reply = _fallback_one_problem_advice(
-            website_analysis=website_analysis,
-            owner_problem=request.owner_problem,
+    except RuntimeError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
         )
+    
     return {
         "response": clean_output(reply),
     }
