@@ -76,29 +76,30 @@ Rules:
 - Promote AllOfTech services where relevant.
 """
 
-    # ------------------------------
+# ------------------------------
 # Business Analyzer prompt (one-problem policy)
 # ------------------------------
 BUSINESS_ANALYZER_SYSTEM_PROMPT = """
 You are ALLOFTECH AI — the official intelligent assistant of AllOfTech.
 
 You will receive:
-- Website analysis JSON (content summary, SEO fields, detected tech stack).
+- Website analysis JSON (content summary, SEO fields, detected tech stack) — may be empty.
 - An optional business owner problem statement.
 
 Your job:
 - Identify exactly ONE main problem (never multiple).
-- Give ONE clear, specific, high-impact advice directly tied to that one problem.
-- If the owner provided a problem, prioritize it as the main problem (treat it as a plus point).
+- Give ONE clear, specific, high-impact advice tied directly to that one problem.
+- If the owner provided a problem, treat it as the main problem (even if website data is thin).
 - If no owner problem is provided, infer ONE main problem from the website analysis.
+- Do NOT echo raw website JSON in the answer; just use it to reason.
 
 Output rules (must follow exactly):
 - No hidden reasoning, no <think>.
-- Keep it concise and actionable.
-- End with how AllOfTech can help + contact details + meeting link.
+- Be concise, specific, and actionable for a business owner (not generic).
+- End with how AllOfTech can help + contact + meeting link (no placeholders).
 
 Required output format (use these headings exactly):
-
+Main problem:
 Advice:
 How AllOfTech can help:
 Contact:
@@ -162,9 +163,8 @@ def _fallback_one_problem_advice(*, website_analysis: Dict[str, Any], owner_prob
     if owner_problem_text:
         main_problem = owner_problem_text
         advice = (
-            "Turn this into a measurable lead-generation system: add a clear above-the-fold offer, a single strong CTA, "
-            "a short lead form, and track conversions (GA4 + events). Then run a 2-week SEO + landing-page tuning sprint "
-            "based on the top keywords and page messaging."
+            "Add a chatbot with a clear brand voice that greets visitors, answers common service questions, and captures lead details "
+            "(name, email, project type, timeline). Connect it to your CRM/email so handoffs are instant and measurable."
         )
     else:
         seo = website_analysis.get("seo") or {}
@@ -242,16 +242,20 @@ async def ask_business_advisor(*, website_analysis: Dict[str, Any], owner_proble
         }
 
         owner_problem_text = (owner_problem or "").strip()
-        if owner_problem_text:
-            owner_problem_block = f'Business owner problem (prioritize this): "{owner_problem_text}"'
-        else:
-            owner_problem_block = "Business owner problem: (not provided)"
+        owner_problem_block = owner_problem_text if owner_problem_text else "(not provided)"
 
         user_payload = (
-            "Website analysis JSON:\n"
-            f"{json.dumps(website_analysis, ensure_ascii=False)}\n\n"
-            f"{owner_problem_block}\n\n"
-            "Now produce the required output format."
+            "Context for analysis (use this to reason; do NOT echo raw JSON back):\n"
+            f"- Website analysis JSON: {json.dumps(website_analysis, ensure_ascii=False)}\n"
+            f"- Owner problem (if any, prioritize if present): {owner_problem_block}\n\n"
+            "Requirements:\n"
+            "- Identify exactly ONE main problem.\n"
+            "- Give ONE specific, high-impact advice tied to that problem.\n"
+            "- If owner problem is provided, treat it as the main problem.\n"
+            "- If no owner problem, infer the main problem from the website analysis.\n"
+            "- Do NOT include raw website JSON in the answer.\n"
+            "- End with how AllOfTech can help + contact + meeting link (no placeholders).\n"
+            "- Use the required headings exactly.\n"
         )
 
         payload = {
@@ -322,7 +326,6 @@ async def business_advice(request: BusinessAnalysisRequest):
             owner_problem=request.owner_problem,
         )
     return {
-        "website_analysis": website_analysis,
         "response": clean_output(reply),
     }
 
