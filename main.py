@@ -98,7 +98,7 @@ Output rules (must follow exactly):
 - End with how AllOfTech can help + contact details + meeting link.
 
 Required output format (use these headings exactly):
-Main problem:
+
 Advice:
 How AllOfTech can help:
 Contact:
