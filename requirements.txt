@@ -1,9 +1,8 @@
-requests 
-beautifulsoup4 
+requests
+beautifulsoup4
 lxml
 fastapi
 uvicorn
-requests
 pydantic
 python-dotenv
 openrouter
