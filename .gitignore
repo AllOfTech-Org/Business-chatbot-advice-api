@@ -1,0 +1,5 @@
+.env
+venv/
+__pycache__/
+templatemo-nexus-scripts.js
+templatemo-nexus-style.css
