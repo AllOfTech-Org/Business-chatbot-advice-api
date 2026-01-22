@@ -77,7 +77,10 @@ schedule a meeting: https://calendar.app.google/39A1uSVFK96rUrUg9
 Rules:
 - Respond clearly and professionally.
 - Never show <think> or hidden reasoning.
-- Promote AllOfTech services where relevant.
+- Always identify ONLY ONE most essential problem (never multiple problems).
+- Focus on solving that single problem with clear, actionable solutions.
+- Always explain how ALLOFTECH can specifically help solve/heal the identified problem.
+- Promote AllOfTech services that directly address the identified issue.
 """
 
 # Request model
@@ -237,24 +240,37 @@ async def get_solution(request: SolutionRequest):
         prompt_parts.append("\nBased on the above problem description,")
 
     # Step 3: Create the final prompt
-    # Only include AllOfTech promotion if website analysis was done
+    # Focus on ONE essential problem and how ALLOFTECH can solve it
     if website_analysis:
         prompt_parts.append("""
-Please provide:
-1. A comprehensive analysis and solution to address the issue(s)
-2. Specific recommendations based on the information provided
-3. At the end, explain how AllOfTech can help solve this problem and what services we offer that would be relevant
+IMPORTANT INSTRUCTIONS:
+1. Identify ONLY ONE most essential/critical problem for this business (do not list multiple problems)
+2. Focus on that single problem and provide a clear, actionable solution
+3. Explain how ALLOFTECH can specifically help solve/heal this problem
+4. Mention relevant ALLOFTECH services that directly address this issue
 
-Be professional, clear, and actionable in your response.
+Structure your response as:
+- THE PROBLEM: [One clear, essential problem]
+- THE SOLUTION: [How to solve it]
+- HOW ALLOFTECH HEALS THIS: [Specific ALLOFTECH services and approach]
+
+Be concise, professional, and focused on the single most important issue.
 """)
     else:
-        # Only problem text - just give advice, no AllOfTech promotion
+        # Only problem text - still focus on one problem and ALLOFTECH solution
         prompt_parts.append("""
-Please provide:
-1. A comprehensive analysis and solution to address the issue(s)
-2. Specific recommendations based on the information provided
+IMPORTANT INSTRUCTIONS:
+1. Identify ONLY ONE most essential/critical problem from the description (do not list multiple problems)
+2. Focus on that single problem and provide a clear, actionable solution
+3. Explain how ALLOFTECH can specifically help solve/heal this problem
+4. Mention relevant ALLOFTECH services that directly address this issue
 
-Be professional, clear, and actionable in your response. Provide general advice without promoting any specific company.
+Structure your response as:
+- THE PROBLEM: [One clear, essential problem]
+- THE SOLUTION: [How to solve it]
+- HOW ALLOFTECH HEALS THIS: [Specific ALLOFTECH services and approach]
+
+Be concise, professional, and focused on the single most important issue.
 """)
 
     final_prompt = "\n".join(prompt_parts)
